@@ -16,7 +16,15 @@ func main() {
 	router.GET("/", handleRequest)
 
 	// Start the server
-	router.Run(":8080")
+	go func() {
+		if err := router.Run(":8080"); err != nil {
+			panic(err)
+		}
+	}()
+
+	// Start the clients
+	numClients := 3
+	startClients(numClients)
 }
 
 func handleRequest(c *gin.Context) {

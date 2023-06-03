@@ -11,7 +11,7 @@ import (
 
 func sendRequest(client *http.Client, wg *sync.WaitGroup, requestData RequestData) {
 
-	// To to  called when goroutine exts (autoatically)
+	// To to  called when goroutine exits (automatically)
 	defer wg.Done()
 
 	// Convert request data to JSON. Incase of error Print err
