@@ -1,7 +1,8 @@
 package main
 
 import (
-	"time"
+	"fmt"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,18 +18,17 @@ func main() {
 }
 
 func handleRequest(c *gin.Context) {
-	// Extract required information from the request headers
-	goroutineID := c.GetHeader("Goroutine-ID")
-	requestTime := c.GetHeader("Request-Time")
-	messageCount := c.GetHeader("Message-Count")
+	var requestData RequestData
 
-	// Echo back the received data in the response
-	response := gin.H{
-		"Goroutine-ID":  goroutineID,
-		"Request-Time":  requestTime,
-		"Message-Count": messageCount,
-		"Server-Time":   time.Now().UTC(),
+	// Parse the request JSON into requestData struct
+	if err := c.ShouldBindJSON(&requestData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
-	c.JSON(200, response)
+	// Process the received request data
+	response := fmt.Sprintf("Received Request:\nGoroutine-ID: %s\nRequest-Time: %s\nMessage-Count: %d",
+		requestData.GoroutineID, requestData.RequestTime, requestData.MessageCount)
+
+	c.String(http.StatusOK, response)
 }
