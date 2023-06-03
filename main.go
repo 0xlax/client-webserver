@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strconv"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 )
@@ -31,4 +33,20 @@ func handleRequest(c *gin.Context) {
 		requestData.GoroutineID, requestData.RequestTime, requestData.MessageCount)
 
 	c.String(http.StatusOK, response)
+}
+
+func startClients(numClients int) {
+	var wg sync.WaitGroup
+	client := http.DefaultClient
+
+	for i := 0; i < numClients; i++ {
+		wg.Add(1)
+		go sendRequest(client, &wg, RequestData{
+			GoroutineID:  fmt.Sprintf("Goroutine-%d", i),
+			RequestTime:  "2023-06-03T12:00:00Z",
+			MessageCount: strconv.Itoa(i + 1),
+		})
+	}
+
+	wg.Wait()
 }
