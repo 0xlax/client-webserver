@@ -20,31 +20,22 @@ type RequestData struct {
 }
 
 type RateLimiter struct {
-	mu         sync.Mutex
-	counts     map[string]int
-	lastAccess map[string]time.Time
+	mu              sync.Mutex
+	lastAccessTimes map[string]time.Time
 }
 
 func (rl *RateLimiter) AllowRequest(goroutineID string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	count, exists := rl.counts[goroutineID]
-	if !exists {
-		rl.counts[goroutineID] = 1
-		rl.lastAccess[goroutineID] = time.Now()
-		return true
+	currentTime := time.Now()
+	lastAccessTime, lastAccessExists := rl.lastAccessTimes[goroutineID]
+
+	if lastAccessExists && currentTime.Sub(lastAccessTime) < time.Second {
+		return false
 	}
 
-	if count >= 10 {
-		if time.Since(rl.lastAccess[goroutineID]) < time.Minute {
-			return false
-		}
-		rl.counts[goroutineID] = 0
-		rl.lastAccess[goroutineID] = time.Now()
-	}
-
-	rl.counts[goroutineID]++
+	rl.lastAccessTimes[goroutineID] = currentTime
 	return true
 }
 
@@ -91,28 +82,33 @@ func startClients(numClients int) {
 	client := http.DefaultClient
 
 	limiter := RateLimiter{
-		counts:     make(map[string]int),
-		lastAccess: make(map[string]time.Time),
+		lastAccessTimes: make(map[string]time.Time),
 	}
 
 	for i := 0; i < numClients; i++ {
 		wg.Add(1)
-		go sendRequest(client, &wg, &limiter, RequestData{
-			GoroutineID:  fmt.Sprintf("goroutine-%d", i),
-			RequestTime:  time.Now().UTC().Format(time.RFC3339),
-			MessageCount: i + 1,
-		})
+		go func(goroutineID string) {
+			defer wg.Done()
+			for {
+				requestData := RequestData{
+					GoroutineID:  goroutineID,
+					RequestTime:  time.Now().UTC().Format(time.RFC3339),
+					MessageCount: 0, // Set the initial message count to 0
+				}
+				sendRequest(client, &limiter, requestData)
+				requestData.MessageCount++
+				time.Sleep(time.Second) // Control the timing between requests
+			}
+		}(fmt.Sprintf("goroutine-%d", i+1))
 	}
 
 	wg.Wait()
 }
 
-func sendRequest(client *http.Client, wg *sync.WaitGroup, limiter *RateLimiter, requestData RequestData) {
-	defer wg.Done()
-
-	// Check if the request is allowed by the rate limiter
+func sendRequest(client *http.Client, limiter *RateLimiter, requestData RequestData) {
 	if !limiter.AllowRequest(requestData.GoroutineID) {
-		fmt.Println("Rate limit exceeded for goroutine:", requestData.GoroutineID)
+		fmt.Printf("Request blocked for goroutine '%s'. Sleeping for 1 minute.\n", requestData.GoroutineID)
+		time.Sleep(time.Minute)
 		return
 	}
 
@@ -139,4 +135,8 @@ func sendRequest(client *http.Client, wg *sync.WaitGroup, limiter *RateLimiter, 
 	}
 
 	fmt.Println("Response:", string(body))
+}
+
+func init() {
+	gin.SetMode(gin.ReleaseMode)
 }
