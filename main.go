@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
@@ -21,6 +22,7 @@ type RequestData struct {
 
 type RateLimiter struct {
 	mu              sync.Mutex
+	requestsPerSec  map[string]int
 	lastAccessTimes map[string]time.Time
 }
 
@@ -82,6 +84,7 @@ func startClients(numClients int) {
 	client := http.DefaultClient
 
 	limiter := RateLimiter{
+		requestsPerSec:  make(map[string]int),
 		lastAccessTimes: make(map[string]time.Time),
 	}
 
@@ -90,13 +93,13 @@ func startClients(numClients int) {
 		go func(goroutineID string) {
 			defer wg.Done()
 			for {
+				messageCount := rand.Intn(26) // Select random number of requests per second between 0 and 25
 				requestData := RequestData{
 					GoroutineID:  goroutineID,
 					RequestTime:  time.Now().UTC().Format(time.RFC3339),
-					MessageCount: 0, // Set the initial message count to 0
+					MessageCount: messageCount,
 				}
 				sendRequest(client, &limiter, requestData)
-				requestData.MessageCount++
 				time.Sleep(time.Second) // Control the timing between requests
 			}
 		}(fmt.Sprintf("goroutine-%d", i+1))
@@ -108,6 +111,12 @@ func startClients(numClients int) {
 func sendRequest(client *http.Client, limiter *RateLimiter, requestData RequestData) {
 	if !limiter.AllowRequest(requestData.GoroutineID) {
 		fmt.Printf("Request blocked for goroutine '%s'. Sleeping for 1 minute.\n", requestData.GoroutineID)
+		time.Sleep(time.Minute)
+		return
+	}
+
+	if requestData.MessageCount > 10 {
+		fmt.Printf("Request count exceeds limit for goroutine '%s'. Sleeping for 1 minute.\n", requestData.GoroutineID)
 		time.Sleep(time.Minute)
 		return
 	}
